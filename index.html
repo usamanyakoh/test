@@ -1,113 +1,261 @@
-/**
- * คำแนะนำ: นำโค้ดนี้ไปวางใน Google Apps Script (ส่วนขยาย > Apps Script จาก Google Sheets ของคุณ)
- * จากนั้นกด "การทำให้ใช้งานได้ (Deploy)" > "การทำให้ใช้งานได้รายการใหม่ (New deployment)"
- * เลือกประเภท "เว็บแอป (Web App)" 
- * สิทธิ์การเข้าถึง: เลือก "ทุกคน (Anyone)"
- * คัดลอก URL ของเว็บแอปที่ได้ นำไปใส่ในไฟล์ index.html ตรงบรรทัดที่เขียนว่า SCRIPT_URL
- */
-
-function doPost(e) {
-  try {
-    // อ่านข้อมูลที่ส่งมาจาก Frontend
-    const payload = JSON.parse(e.postData.contents);
-    const refCodeToSearch = payload.refCode;
-
-    // เชื่อมต่อกับ Sheet ปัจจุบัน
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบเช็คอินเข้างาน (Check-in)</title>
+    <!-- Tailwind CSS สำหรับการตกแต่ง เน้นโทนสีชมพู -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- HTML5 QRCode สำหรับสแกนกล้อง -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- Font Noto Sans Thai -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    // ดึงข้อมูล Sheet ตามชื่อที่กำหนด
-    const bookingsSheet = ss.getSheetByName("Bookings");
-    const checkInSheet = ss.getSheetByName("Chek-in");
+    <style>
+        body {
+            font-family: 'Noto Sans Thai', sans-serif;
+            background-color: #fce7f3; /* Pink-50 */
+        }
+        /* ปรับแต่งปุ่มของ html5-qrcode ให้เข้ากับธีม */
+        #qr-reader__dashboard_section_csr span button {
+            background-color: #ec4899 !important; /* Pink-500 */
+            color: white !important;
+            padding: 8px 16px !important;
+            border-radius: 8px !important;
+            border: none !important;
+            margin-top: 10px !important;
+        }
+        #qr-reader {
+            border: none !important;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
 
-    // ตรวจสอบว่ามีชีตครบหรือไม่
-    if (!bookingsSheet || !checkInSheet) {
-      return responseJSON({ status: "error", message: "ไม่พบชีต Bookings หรือ Chek-in ใน Google Sheet" });
-    }
+    <!-- Container หลัก -->
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden border border-pink-200">
+        <!-- Header -->
+        <div class="bg-pink-500 text-white text-center py-5">
+            <h1 class="text-2xl font-bold">EVENT CHECK-IN</h1>
+            <p class="text-pink-100 text-sm mt-1">ระบบลงทะเบียนเข้าร่วมกิจกรรม</p>
+        </div>
 
-    // 1. ค้นหา RefCode ในหน้า Bookings
-    const bookingsData = bookingsSheet.getDataRange().getValues();
-    const bookingHeaders = bookingsData[0]; // แถวแรกคือ Header
+        <!-- แท็บสลับ สแกน/กรอกเอง -->
+        <div class="flex border-b border-pink-100">
+            <button id="tab-scan" onclick="switchTab('scan')" class="flex-1 py-3 text-center font-semibold text-pink-600 border-b-2 border-pink-500 bg-pink-50 transition-colors">
+                สแกน QR Code
+            </button>
+            <button id="tab-manual" onclick="switchTab('manual')" class="flex-1 py-3 text-center font-semibold text-gray-400 hover:text-pink-500 transition-colors">
+                กรอกรหัส (Manual)
+            </button>
+        </div>
 
-    // ค้นหาว่าคอลัมน์ไหนชื่ออะไร (ยืดหยุ่นกว่าการ Fix ตัวเลขคอลัมน์)
-    const refCodeColIndex = bookingHeaders.findIndex(h => h.toString().toLowerCase() === "refcode");
-    const seatIdColIndex = bookingHeaders.findIndex(h => h.toString().toLowerCase() === "seatid");
-    const phoneColIndex = bookingHeaders.findIndex(h => h.toString().toLowerCase() === "phone");
+        <!-- ส่วนเนื้อหา -->
+        <div class="p-6">
+            
+            <!-- โหมดสแกน -->
+            <div id="mode-scan" class="block">
+                <div id="qr-reader" class="w-full"></div>
+                <p class="text-center text-sm text-gray-500 mt-4">หันกล้องไปที่ QR Code บนตั๋วของคุณเพื่อเช็คอิน</p>
+            </div>
 
-    // ถ้าหาคอลัมน์ RefCode ไม่เจอ ให้สุ่มหาจากทุกคอลัมน์แทน 
-    // (แต่แนะนำให้ในชีตมีหัวข้อ RefCode, SeatID, Phone)
-    
-    let foundRow = null;
-    let foundSeatId = "";
-    let foundPhone = "";
+            <!-- โหมดกรอกรหัสเอง -->
+            <div id="mode-manual" class="hidden">
+                <form id="manual-form" onsubmit="handleManualSubmit(event)">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">รหัสอ้างอิง (RefCode)</label>
+                    <input type="text" id="refCodeInput" class="w-full px-4 py-3 rounded-xl border border-pink-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition" placeholder="เช่น REF123456" required>
+                    <button type="submit" class="w-full mt-4 bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-4 rounded-xl transition shadow-md hover:shadow-lg">
+                        ตรวจสอบและเช็คอิน
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
 
-    for (let i = 1; i < bookingsData.length; i++) {
-      let row = bookingsData[i];
-      // หากกำหนด Header ถูกต้อง ใช้ index, ถ้าไม่มี ให้เช็คช่องที่ 1 (index 0) เบื้องต้น
-      let cellRefCode = refCodeColIndex !== -1 ? row[refCodeColIndex] : row[0];
-      
-      if (cellRefCode.toString().trim() === refCodeToSearch) {
-        foundRow = i;
-        foundSeatId = seatIdColIndex !== -1 ? row[seatIdColIndex] : (row[1] || "");
-        foundPhone = phoneColIndex !== -1 ? row[phoneColIndex] : (row[2] || "");
-        break;
-      }
-    }
+    <!-- ส่วนของ Modal (Popup ข้อความต่างๆ) -->
+    <!-- Loading Modal -->
+    <div id="loading-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-6 rounded-2xl flex flex-col items-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-pink-500 mb-4"></div>
+            <p class="text-pink-600 font-semibold">กำลังตรวจสอบข้อมูล...</p>
+        </div>
+    </div>
 
-    // กรณีไม่พบตั๋ว
-    if (foundRow === null) {
-      return responseJSON({ status: "not_found", message: "ไม่พบข้อมูลการสำรองที่นั่ง" });
-    }
+    <!-- Result Modal -->
+    <div id="result-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4 transition-opacity">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden transform transition-all scale-100">
+            <div id="modal-header" class="p-4 text-center text-white">
+                <!-- Icon and Title will be injected here -->
+            </div>
+            <div class="p-6 text-center">
+                <p id="modal-message" class="text-gray-700 text-lg"></p>
+                <div id="modal-extra" class="mt-4 text-sm text-gray-500"></div>
+                <button onclick="closeModal()" class="mt-6 w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-3 px-4 rounded-xl transition">
+                    ตกลง
+                </button>
+            </div>
+        </div>
+    </div>
 
-    // 2. ตรวจสอบว่าเคยเช็คอินไปแล้วหรือไม่ ในหน้า Chek-in
-    const checkInData = checkInSheet.getDataRange().getValues();
-    const checkInHeaders = checkInData[0] || [];
-    
-    let chkRefCodeCol = checkInHeaders.findIndex(h => h.toString().toLowerCase() === "refcode");
-    let chkTimeCol = checkInHeaders.findIndex(h => h.toString().toLowerCase() === "timestamp");
-    
-    // ถ้าเพิ่งสร้างชีตใหม่แล้วไม่มี Header สมมติโครงสร้าง: Timestamp, SeatID, RefCode, Phone, Status
-    if (chkRefCodeCol === -1) chkRefCodeCol = 2; 
-    if (chkTimeCol === -1) chkTimeCol = 0;
+    <script>
+        // ==========================================
+        // ⚠️ สำคัญมาก: เปลี่ยน URL ด้านล่างให้เป็น URL ของ Google Apps Script ที่ Deploy เป็น Web App ของคุณ
+        // ==========================================
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby8W0TEaMnn3AyMtt2TuSIO4r3Jrj7kkT0fN9Rxv6Rw2Rqqyce0fjtI2WyoX40Sb3Ru/exec"; 
 
-    for (let i = 1; i < checkInData.length; i++) {
-      let row = checkInData[i];
-      if (row[chkRefCodeCol].toString().trim() === refCodeToSearch) {
-        // พบว่าเคยเช็คอินแล้ว
-        return responseJSON({ 
-          status: "duplicate", 
-          time: row[chkTimeCol] 
-        });
-      }
-    }
+        let html5QrcodeScanner = null;
+        let isProcessing = false;
 
-    // 3. บันทึกข้อมูลการเช็คอิน
-    const timestamp = new Date();
-    // เรียงคอลัมน์ตามที่คุณกำหนด: Timestamp, SeatID, RefCode, Phone, Status
-    checkInSheet.appendRow([
-      timestamp,
-      foundSeatId,
-      refCodeToSearch,
-      foundPhone,
-      "เช็คอินเรียบร้อย"
-    ]);
+        // ฟังก์ชันสลับ Tab
+        function switchTab(tab) {
+            const scanTab = document.getElementById('tab-scan');
+            const manualTab = document.getElementById('tab-manual');
+            const scanMode = document.getElementById('mode-scan');
+            const manualMode = document.getElementById('mode-manual');
 
-    // ตอบกลับสำเร็จ
-    return responseJSON({
-      status: "success",
-      data: {
-        seatId: foundSeatId,
-        refCode: refCodeToSearch,
-        phone: foundPhone
-      }
-    });
+            if (tab === 'scan') {
+                scanTab.classList.add('text-pink-600', 'border-b-2', 'border-pink-500', 'bg-pink-50');
+                scanTab.classList.remove('text-gray-400');
+                manualTab.classList.remove('text-pink-600', 'border-b-2', 'border-pink-500', 'bg-pink-50');
+                manualTab.classList.add('text-gray-400');
+                scanMode.classList.remove('hidden');
+                manualMode.classList.add('hidden');
+                initScanner();
+            } else {
+                manualTab.classList.add('text-pink-600', 'border-b-2', 'border-pink-500', 'bg-pink-50');
+                manualTab.classList.remove('text-gray-400');
+                scanTab.classList.remove('text-pink-600', 'border-b-2', 'border-pink-500', 'bg-pink-50');
+                scanTab.classList.add('text-gray-400');
+                manualMode.classList.remove('hidden');
+                scanMode.classList.add('hidden');
+                if (html5QrcodeScanner) {
+                    html5QrcodeScanner.pause(true); // พักกล้อง
+                }
+            }
+        }
 
-  } catch (error) {
-    return responseJSON({ status: "error", message: error.toString() });
-  }
-}
+        // เริ่มการทำงานกล้อง
+        function initScanner() {
+            if (!html5QrcodeScanner) {
+                html5QrcodeScanner = new Html5QrcodeScanner(
+                    "qr-reader", { fps: 10, qrbox: {width: 250, height: 250}, aspectRatio: 1.0 }
+                );
+                html5QrcodeScanner.render(onScanSuccess, onScanError);
+            } else {
+                html5QrcodeScanner.resume();
+            }
+        }
 
-// ฟังก์ชันช่วยในการตอบกลับเป็น JSON
-function responseJSON(data) {
-  return ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+        // เมื่อสแกนสำเร็จ
+        function onScanSuccess(decodedText, decodedResult) {
+            if (isProcessing) return;
+            if (html5QrcodeScanner) html5QrcodeScanner.pause(true);
+            processCheckIn(decodedText);
+        }
+
+        function onScanError(errorMessage) {
+            // ไม่ต้องทำอะไร ปล่อยให้มันสแกนต่อไป
+        }
+
+        // เมื่อกด Submit หน้ากรอก Manual
+        function handleManualSubmit(e) {
+            e.preventDefault();
+            const refCode = document.getElementById('refCodeInput').value.trim();
+            if (refCode) {
+                processCheckIn(refCode);
+            }
+        }
+
+        // ฟังก์ชันหลักที่ส่งข้อมูลไปเช็คที่ Google Sheets (Apps Script)
+        async function processCheckIn(refCode) {
+            isProcessing = true;
+            showLoading(true);
+
+            // หากยังไม่ได้ใส่ SCRIPT_URL ให้แจ้งเตือนก่อน
+            if (SCRIPT_URL === "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL") {
+                showLoading(false);
+                showModal('error', 'ระบบยังไม่พร้อม', 'กรุณาตั้งค่า Web App URL ในโค้ด HTML ให้เรียบร้อยก่อนใช้งาน');
+                return;
+            }
+
+            try {
+                // ส่ง POST Request แบบ plain text เพื่อหลีกเลี่ยง CORS Preflight
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ refCode: refCode }),
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+                });
+                
+                const result = await response.json();
+                showLoading(false);
+
+                if (result.status === 'success') {
+                    showModal('success', 'เข้าร่วมกิจกรรมสำเร็จ', `ยินดีต้อนรับ! รหัส: ${refCode}`, `ที่นั่ง: ${result.data.seatId || '-'}`);
+                    document.getElementById('refCodeInput').value = ''; // เคลียร์ช่องกรอก
+                } else if (result.status === 'duplicate') {
+                    // แปลงเวลาให้สวยงาม
+                    const timeObj = new Date(result.time);
+                    const timeStr = timeObj.toLocaleString('th-TH');
+                    showModal('warning', 'เช็คอินซ้ำ!', `ที่นั่งนี้ถูกใช้งานแล้วเวลา:<br><span class="font-bold">${timeStr}</span>`, `รหัส: ${refCode}`);
+                } else if (result.status === 'not_found') {
+                    showModal('error', 'ไม่พบข้อมูล!', 'ไม่พบข้อมูลการสำรองที่นั่งของท่าน<br>โปรดตรวจสอบตั๋วที่นั่งให้ถูกต้อง', `รหัสที่แสกน: ${refCode}`);
+                } else {
+                    showModal('error', 'เกิดข้อผิดพลาด', result.message || 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้');
+                }
+
+            } catch (error) {
+                showLoading(false);
+                showModal('error', 'การเชื่อมต่อขัดข้อง', 'โปรดตรวจสอบสัญญาณอินเทอร์เน็ตและลองอีกครั้ง');
+            }
+        }
+
+        // UI Helpers
+        function showLoading(show) {
+            const modal = document.getElementById('loading-modal');
+            if (show) {
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function showModal(type, title, message, extra = '') {
+            const modal = document.getElementById('result-modal');
+            const header = document.getElementById('modal-header');
+            
+            // เปลี่ยนสีตามประเภท
+            if (type === 'success') {
+                header.className = 'p-5 text-center text-white bg-green-500';
+                header.innerHTML = `<svg class="w-16 h-16 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><h2 class="text-2xl font-bold">${title}</h2>`;
+            } else if (type === 'warning') {
+                header.className = 'p-5 text-center text-white bg-yellow-500';
+                header.innerHTML = `<svg class="w-16 h-16 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><h2 class="text-2xl font-bold">${title}</h2>`;
+            } else {
+                header.className = 'p-5 text-center text-white bg-red-500';
+                header.innerHTML = `<svg class="w-16 h-16 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><h2 class="text-2xl font-bold">${title}</h2>`;
+            }
+
+            document.getElementById('modal-message').innerHTML = message;
+            document.getElementById('modal-extra').innerHTML = extra;
+            
+            modal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('result-modal').classList.add('hidden');
+            isProcessing = false;
+            // ถ้าอยู่ในโหมดสแกน ให้เปิดกล้องทำงานต่อ
+            if (!document.getElementById('mode-scan').classList.contains('hidden') && html5QrcodeScanner) {
+                html5QrcodeScanner.resume();
+            }
+        }
+
+        // เริ่มต้นด้วยการเปิดกล้อง
+        window.onload = () => {
+            initScanner();
+        };
+    </script>
+</body>
+</html>
