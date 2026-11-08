@@ -1,0 +1,113 @@
+/**
+ * คำแนะนำ: นำโค้ดนี้ไปวางใน Google Apps Script (ส่วนขยาย > Apps Script จาก Google Sheets ของคุณ)
+ * จากนั้นกด "การทำให้ใช้งานได้ (Deploy)" > "การทำให้ใช้งานได้รายการใหม่ (New deployment)"
+ * เลือกประเภท "เว็บแอป (Web App)" 
+ * สิทธิ์การเข้าถึง: เลือก "ทุกคน (Anyone)"
+ * คัดลอก URL ของเว็บแอปที่ได้ นำไปใส่ในไฟล์ index.html ตรงบรรทัดที่เขียนว่า SCRIPT_URL
+ */
+
+function doPost(e) {
+  try {
+    // อ่านข้อมูลที่ส่งมาจาก Frontend
+    const payload = JSON.parse(e.postData.contents);
+    const refCodeToSearch = payload.refCode;
+
+    // เชื่อมต่อกับ Sheet ปัจจุบัน
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // ดึงข้อมูล Sheet ตามชื่อที่กำหนด
+    const bookingsSheet = ss.getSheetByName("Bookings");
+    const checkInSheet = ss.getSheetByName("Chek-in");
+
+    // ตรวจสอบว่ามีชีตครบหรือไม่
+    if (!bookingsSheet || !checkInSheet) {
+      return responseJSON({ status: "error", message: "ไม่พบชีต Bookings หรือ Chek-in ใน Google Sheet" });
+    }
+
+    // 1. ค้นหา RefCode ในหน้า Bookings
+    const bookingsData = bookingsSheet.getDataRange().getValues();
+    const bookingHeaders = bookingsData[0]; // แถวแรกคือ Header
+
+    // ค้นหาว่าคอลัมน์ไหนชื่ออะไร (ยืดหยุ่นกว่าการ Fix ตัวเลขคอลัมน์)
+    const refCodeColIndex = bookingHeaders.findIndex(h => h.toString().toLowerCase() === "refcode");
+    const seatIdColIndex = bookingHeaders.findIndex(h => h.toString().toLowerCase() === "seatid");
+    const phoneColIndex = bookingHeaders.findIndex(h => h.toString().toLowerCase() === "phone");
+
+    // ถ้าหาคอลัมน์ RefCode ไม่เจอ ให้สุ่มหาจากทุกคอลัมน์แทน 
+    // (แต่แนะนำให้ในชีตมีหัวข้อ RefCode, SeatID, Phone)
+    
+    let foundRow = null;
+    let foundSeatId = "";
+    let foundPhone = "";
+
+    for (let i = 1; i < bookingsData.length; i++) {
+      let row = bookingsData[i];
+      // หากกำหนด Header ถูกต้อง ใช้ index, ถ้าไม่มี ให้เช็คช่องที่ 1 (index 0) เบื้องต้น
+      let cellRefCode = refCodeColIndex !== -1 ? row[refCodeColIndex] : row[0];
+      
+      if (cellRefCode.toString().trim() === refCodeToSearch) {
+        foundRow = i;
+        foundSeatId = seatIdColIndex !== -1 ? row[seatIdColIndex] : (row[1] || "");
+        foundPhone = phoneColIndex !== -1 ? row[phoneColIndex] : (row[2] || "");
+        break;
+      }
+    }
+
+    // กรณีไม่พบตั๋ว
+    if (foundRow === null) {
+      return responseJSON({ status: "not_found", message: "ไม่พบข้อมูลการสำรองที่นั่ง" });
+    }
+
+    // 2. ตรวจสอบว่าเคยเช็คอินไปแล้วหรือไม่ ในหน้า Chek-in
+    const checkInData = checkInSheet.getDataRange().getValues();
+    const checkInHeaders = checkInData[0] || [];
+    
+    let chkRefCodeCol = checkInHeaders.findIndex(h => h.toString().toLowerCase() === "refcode");
+    let chkTimeCol = checkInHeaders.findIndex(h => h.toString().toLowerCase() === "timestamp");
+    
+    // ถ้าเพิ่งสร้างชีตใหม่แล้วไม่มี Header สมมติโครงสร้าง: Timestamp, SeatID, RefCode, Phone, Status
+    if (chkRefCodeCol === -1) chkRefCodeCol = 2; 
+    if (chkTimeCol === -1) chkTimeCol = 0;
+
+    for (let i = 1; i < checkInData.length; i++) {
+      let row = checkInData[i];
+      if (row[chkRefCodeCol].toString().trim() === refCodeToSearch) {
+        // พบว่าเคยเช็คอินแล้ว
+        return responseJSON({ 
+          status: "duplicate", 
+          time: row[chkTimeCol] 
+        });
+      }
+    }
+
+    // 3. บันทึกข้อมูลการเช็คอิน
+    const timestamp = new Date();
+    // เรียงคอลัมน์ตามที่คุณกำหนด: Timestamp, SeatID, RefCode, Phone, Status
+    checkInSheet.appendRow([
+      timestamp,
+      foundSeatId,
+      refCodeToSearch,
+      foundPhone,
+      "เช็คอินเรียบร้อย"
+    ]);
+
+    // ตอบกลับสำเร็จ
+    return responseJSON({
+      status: "success",
+      data: {
+        seatId: foundSeatId,
+        refCode: refCodeToSearch,
+        phone: foundPhone
+      }
+    });
+
+  } catch (error) {
+    return responseJSON({ status: "error", message: error.toString() });
+  }
+}
+
+// ฟังก์ชันช่วยในการตอบกลับเป็น JSON
+function responseJSON(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
