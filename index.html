@@ -3,285 +3,226 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ระบบเช็คอินเข้างาน (Check-in)</title>
-    
-    <!-- Tailwind CSS สำหรับการตกแต่ง เน้นโทนสีชมพู -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- HTML5 QRCode สำหรับสแกนกล้อง -->
+    <title>Event Check-in System</title>
+    <!-- โหลดไลบรารีสแกน QR และ SweetAlert2 สำหรับ Popup แจ้งเตือน -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    
-    <!-- SweetAlert2 สำหรับ Popup สวยงาม -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-    <!-- Font Noto Sans Thai -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
     <style>
         body {
-            font-family: 'Noto Sans Thai', sans-serif;
-            background-color: #fdf2f8; /* Pink-50 */
+            font-family: 'Sarabun', sans-serif;
+            background-color: #fce4ec; /* โทนชมพูอ่อน */
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
-        /* ปรับแต่งปุ่มและกรอบของ html5-qrcode ให้เข้ากับธีมชมพู */
-        #qr-reader {
-            border: 2px solid #fbcfe8 !important;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        .header {
+            background-color: #d81b60; /* สีชมพูเข้ม */
+            color: white;
+            width: 100%;
+            text-align: center;
+            padding: 20px 0;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .container {
+            width: 90%;
+            max-width: 500px;
             background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            margin-top: 20px;
+            padding: 20px;
+            text-align: center;
         }
-        #qr-reader__dashboard_section_csr span button {
-            background-color: #ec4899 !important; /* Pink-500 */
-            color: white !important;
-            padding: 8px 16px !important;
-            border-radius: 8px !important;
-            border: none !important;
-            margin-top: 10px !important;
-            font-family: 'Noto Sans Thai', sans-serif;
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #f8bbd0;
+        }
+        .tab {
+            flex: 1;
+            padding: 10px;
             cursor: pointer;
-            transition: 0.3s;
+            font-weight: bold;
+            color: #888;
         }
-        #qr-reader__dashboard_section_csr span button:hover {
-            background-color: #db2777 !important; /* Pink-600 */
+        .tab.active {
+            color: #d81b60;
+            border-bottom: 3px solid #d81b60;
         }
-        #qr-reader__scan_region {
-            background-color: #fff;
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        #reader {
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #f8bbd0;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        button.btn-submit {
+            background-color: #d81b60;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+        }
+        button.btn-submit:active {
+            background-color: #ad1457;
         }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4">
+<body>
 
-    <!-- Container หลัก -->
-    <div class="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden border border-pink-200">
-        
-        <!-- Header -->
-        <div class="bg-gradient-to-r from-pink-500 to-pink-400 text-white text-center py-6 shadow-sm">
-            <h1 class="text-2xl font-bold tracking-wide">EVENT CHECK-IN</h1>
-            <p class="text-pink-50 text-sm mt-1">ระบบลงทะเบียนเข้าร่วมกิจกรรม</p>
+    <div class="header">EVENT CHECK-IN</div>
+
+    <div class="container">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('scan')">📷 สแกน QR Code</div>
+            <div class="tab" onclick="switchTab('manual')">⌨️ กรอกรหัสเอง</div>
         </div>
 
-        <!-- แท็บสลับ สแกน/กรอกเอง -->
-        <div class="flex border-b border-pink-100">
-            <button id="tab-scan" onclick="switchTab('scan')" class="flex-1 py-4 text-center font-semibold text-pink-600 border-b-2 border-pink-500 bg-pink-50/50 transition-colors focus:outline-none">
-                📷 สแกน QR Code
-            </button>
-            <button id="tab-manual" onclick="switchTab('manual')" class="flex-1 py-4 text-center font-semibold text-gray-400 hover:text-pink-500 transition-colors focus:outline-none">
-                ⌨️ กรอกรหัสเอง
-            </button>
+        <!-- หน้าจอสำหรับสแกน -->
+        <div id="scan" class="tab-content active">
+            <div id="reader"></div>
         </div>
 
-        <!-- ส่วนเนื้อหา -->
-        <div class="p-6">
-            
-            <!-- โหมดสแกน -->
-            <div id="mode-scan" class="block">
-                <div id="qr-reader" class="w-full"></div>
-                <p class="text-center text-sm text-gray-500 mt-4">อนุญาตให้ใช้งานกล้องและหันไปที่ QR Code</p>
-            </div>
-
-            <!-- โหมดกรอกรหัสเอง -->
-            <div id="mode-manual" class="hidden">
-                <form id="manual-form" onsubmit="handleManualSubmit(event)">
-                    <label class="block text-gray-700 text-sm font-bold mb-2">รหัสอ้างอิง (RefCode)</label>
-                    <input type="text" id="refCodeInput" class="w-full px-4 py-3 rounded-xl border-2 border-pink-100 focus:outline-none focus:ring-0 focus:border-pink-400 transition text-center text-lg tracking-wider uppercase" placeholder="กรอกรหัสที่นี่..." required>
-                    <button type="submit" class="w-full mt-6 bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-4 rounded-xl transition shadow-lg shadow-pink-500/30">
-                        ตรวจสอบและเช็คอิน
-                    </button>
-                </form>
-            </div>
-            
+        <!-- หน้าจอสำหรับกรอกรหัส -->
+        <div id="manual" class="tab-content">
+            <p>ระบุรหัสตั๋วที่นั่ง (RefCode)</p>
+            <input type="text" id="refCodeInput" placeholder="ตัวอย่าง: REF12345">
+            <button class="btn-submit" onclick="submitManualCode()">ตรวจสอบข้อมูล</button>
         </div>
     </div>
 
     <script>
         // ==========================================
-        // ⚠️ สำคัญมาก: นำ URL จาก Google Apps Script (Web App) ของคุณมาใส่ตรงนี้
+        // 1. นำ URL ของ Web App มาใส่ตรงนี้
         // ==========================================
-        const SCRIPT_URL = "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL"; 
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby8W0TEaMnn3AyMtt2TuSIO4r3Jrj7kkT0fN9Rxv6Rw2Rqqyce0fjtI2WyoX40Sb3Ru/exec"; 
 
-        let html5QrcodeScanner = null;
-        let isProcessing = false;
+        let html5QrcodeScanner;
+        let isProcessing = false; // ป้องกันการสแกนรัวๆ
 
-        // เริ่มทำงานเมื่อโหลดหน้าเว็บ
-        window.onload = () => {
-            initScanner();
-        };
+        // สลับหน้าจอระหว่างสแกนกับกรอกรหัส
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            event.currentTarget.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
 
-        // ฟังก์ชันสลับ Tab (สแกน / กรอกรหัส)
-        function switchTab(tab) {
-            const scanTab = document.getElementById('tab-scan');
-            const manualTab = document.getElementById('tab-manual');
-            const scanMode = document.getElementById('mode-scan');
-            const manualMode = document.getElementById('mode-manual');
-
-            if (tab === 'scan') {
-                scanTab.classList.add('text-pink-600', 'border-b-2', 'border-pink-500', 'bg-pink-50/50');
-                scanTab.classList.remove('text-gray-400');
-                manualTab.classList.remove('text-pink-600', 'border-b-2', 'border-pink-500', 'bg-pink-50/50');
-                manualTab.classList.add('text-gray-400');
-                scanMode.classList.remove('hidden');
-                manualMode.classList.add('hidden');
-                initScanner();
-            } else {
-                manualTab.classList.add('text-pink-600', 'border-b-2', 'border-pink-500', 'bg-pink-50/50');
-                manualTab.classList.remove('text-gray-400');
-                scanTab.classList.remove('text-pink-600', 'border-b-2', 'border-pink-500', 'bg-pink-50/50');
-                scanTab.classList.add('text-gray-400');
-                manualMode.classList.remove('hidden');
-                scanMode.classList.add('hidden');
-                if (html5QrcodeScanner) {
-                    html5QrcodeScanner.pause(true); // พักกล้องเพื่อประหยัดแบตเตอรี่
-                }
-            }
-        }
-
-        // เริ่มต้นระบบสแกนกล้อง
-        function initScanner() {
-            if (!html5QrcodeScanner) {
-                html5QrcodeScanner = new Html5QrcodeScanner(
-                    "qr-reader", 
-                    { 
-                        fps: 10, 
-                        qrbox: {width: 250, height: 250},
-                        aspectRatio: 1.0,
-                        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
-                    }
-                );
-                html5QrcodeScanner.render(onScanSuccess, onScanError);
-            } else {
-                if (html5QrcodeScanner.getState() === 2) { // 2 = PAUSED
-                    html5QrcodeScanner.resume();
-                }
+            if (tabId === 'manual' && html5QrcodeScanner) {
+                html5QrcodeScanner.pause();
+            } else if (tabId === 'scan' && html5QrcodeScanner) {
+                html5QrcodeScanner.resume();
             }
         }
 
         // เมื่อสแกนสำเร็จ
-        function onScanSuccess(decodedText, decodedResult) {
-            if (isProcessing) return;
-            if (html5QrcodeScanner && html5QrcodeScanner.getState() !== 2) {
-                html5QrcodeScanner.pause(true);
-            }
+        function onScanSuccess(decodedText) {
+            if (isProcessing) return; // ถ้าระบบกำลังทำงานอยู่ ให้ข้ามไป
+            
+            isProcessing = true;
+            html5QrcodeScanner.pause(); // หยุดกล้องชั่วคราว
             processCheckIn(decodedText);
         }
 
-        // เมื่อสแกนไม่เจอ (ทำงานตลอดเวลา ไม่ต้องแจ้งเตือน)
-        function onScanError(errorMessage) {
-            // ปล่อยว่างไว้
-        }
-
-        // เมื่อกดปุ่มเช็คอินในหน้ากรอกโค้ดเอง
-        function handleManualSubmit(e) {
-            e.preventDefault();
-            const refCode = document.getElementById('refCodeInput').value.trim();
-            if (refCode) {
-                processCheckIn(refCode);
-            }
-        }
-
-        // ----------------------------------------------------
-        // ฟังก์ชันหลัก: ส่งข้อมูลไปยัง Google Apps Script
-        // ----------------------------------------------------
-        async function processCheckIn(refCode) {
-            isProcessing = true;
-
-            // ตรวจสอบว่าผู้ใช้ใส่ URL หรือยัง
-            if (SCRIPT_URL === "https://script.google.com/macros/s/AKfycby8W0TEaMnn3AyMtt2TuSIO4r3Jrj7kkT0fN9Rxv6Rw2Rqqyce0fjtI2WyoX40Sb3Ru/exec") {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'ยังไม่ได้ตั้งค่าระบบ',
-                    text: 'กรุณาใส่ Web App URL ของ Google Apps Script ในโค้ด HTML ให้เรียบร้อยก่อนใช้งาน',
-                    confirmButtonColor: '#ec4899'
-                }).then(() => resumeScanner());
+        // เมื่อกดปุ่มตกลงจากการกรอกรหัส
+        function submitManualCode() {
+            const code = document.getElementById('refCodeInput').value.trim();
+            if (!code) {
+                Swal.fire({ icon: 'warning', title: 'กรุณาระบุรหัส', confirmButtonColor: '#d81b60' });
                 return;
             }
+            processCheckIn(code);
+        }
 
-            // แสดงหน้าโหลด (Loading) สีชมพู
+        // ส่งข้อมูลไปที่ Google Sheets Backend
+        function processCheckIn(refCode) {
             Swal.fire({
                 title: 'กำลังตรวจสอบข้อมูล...',
-                text: 'กรุณารอสักครู่',
                 allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
+                didOpen: () => { Swal.showLoading() }
             });
 
-            try {
-                // ส่งข้อมูล POST ไปยัง Google Apps Script
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ refCode: refCode }),
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' } // ป้องกัน CORS Error
-                });
-                
-                const result = await response.json();
-
-                // ปิดหน้าโหลด
-                Swal.close();
-
-                // ประมวลผลลัพธ์ที่ตอบกลับมาจาก Google Sheets
-                if (result.status === 'success') {
-                    // 1. เช็คอินสำเร็จ
-                    document.getElementById('refCodeInput').value = ''; // เคลียร์ช่อง
+            // ส่งข้อมูลด้วย URLSearchParams แก้ปัญหา CORS
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ 'refCode': refCode })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
                     Swal.fire({
                         icon: 'success',
-                        title: 'เข้าร่วมกิจกรรมสำเร็จ!',
-                        html: `รหัส: <b>${result.data.refCode}</b><br>ที่นั่ง: <b>${result.data.seatId || '-'}</b>`,
-                        confirmButtonText: 'ตกลง',
-                        confirmButtonColor: '#ec4899'
-                    }).then(() => resumeScanner());
-
-                } else if (result.status === 'duplicate') {
-                    // 2. เช็คอินซ้ำ
-                    const timeObj = new Date(result.time);
-                    const timeStr = timeObj.toLocaleString('th-TH');
+                        title: 'เข้าร่วมกิจกรรมสำเร็จ',
+                        text: `ที่นั่งของคุณคือ: ${data.seatID}`,
+                        confirmButtonColor: '#d81b60'
+                    });
+                    document.getElementById('refCodeInput').value = '';
+                } 
+                else if (data.status === 'not_found') {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'ไม่พบข้อมูล',
+                        text: 'ไม่พบข้อมูลการสำรองที่นั่งของท่าน โปรดตรวจสอบตั๋วที่นั่งให้ถูกต้อง',
+                        confirmButtonColor: '#d81b60'
+                    });
+                } 
+                else if (data.status === 'duplicate') {
                     Swal.fire({
                         icon: 'warning',
-                        title: 'ที่นั่งนี้ถูกใช้งานแล้ว!',
-                        html: `รหัส <b>${refCode}</b><br>ถูกเช็คอินไปแล้วเมื่อ:<br><span style="color:#d81b60; font-weight:bold;">${timeStr}</span>`,
-                        confirmButtonText: 'รับทราบ',
-                        confirmButtonColor: '#f59e0b'
-                    }).then(() => resumeScanner());
-
-                } else if (result.status === 'not_found') {
-                    // 3. ไม่พบรหัส
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'ไม่พบข้อมูล!',
-                        html: `ไม่พบข้อมูลการสำรองที่นั่งของรหัส <b>${refCode}</b><br>โปรดตรวจสอบตั๋วที่นั่งให้ถูกต้อง`,
-                        confirmButtonText: 'ลองอีกครั้ง',
-                        confirmButtonColor: '#ef4444'
-                    }).then(() => resumeScanner());
-
-                } else {
-                    // ข้อผิดพลาดอื่นๆ
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'เกิดข้อผิดพลาด',
-                        text: result.message || 'ระบบหลังบ้านขัดข้อง',
-                        confirmButtonColor: '#ec4899'
-                    }).then(() => resumeScanner());
+                        title: 'เช็คอินซ้ำ',
+                        text: `ที่นั่งนี้ถูกใช้งานแล้วเวลา ${data.time}`,
+                        confirmButtonColor: '#d81b60'
+                    });
+                } 
+                else {
+                    throw new Error(data.message);
                 }
-
-            } catch (error) {
+            })
+            .catch(error => {
                 Swal.fire({
                     icon: 'error',
                     title: 'การเชื่อมต่อขัดข้อง',
-                    text: 'โปรดตรวจสอบสัญญาณอินเทอร์เน็ตและลองอีกครั้ง',
-                    confirmButtonColor: '#ec4899'
-                }).then(() => resumeScanner());
-            }
+                    text: 'โปรดตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองอีกครั้ง',
+                    confirmButtonColor: '#d81b60'
+                });
+                console.error('Error:', error);
+            })
+            .finally(() => {
+                isProcessing = false;
+                if (html5QrcodeScanner && document.getElementById('scan').classList.contains('active')) {
+                    setTimeout(() => { html5QrcodeScanner.resume(); }, 2000); // กลับมาเปิดกล้องสแกนต่อ
+                }
+            });
         }
 
-        // ฟังก์ชันสำหรับเปิดกล้องกลับมาทำงานใหม่หลังจากปิด Popup
-        function resumeScanner() {
-            isProcessing = false;
-            // ถ้าอยู่ในหน้า "สแกน" ให้เปิดกล้องต่อ
-            if (!document.getElementById('mode-scan').classList.contains('hidden') && html5QrcodeScanner) {
-                if (html5QrcodeScanner.getState() === 2) {
-                    html5QrcodeScanner.resume();
-                }
-            }
-        }
+        // เริ่มการทำงานของกล้อง
+        window.onload = function() {
+            html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+            html5QrcodeScanner.render(onScanSuccess, (error) => {});
+        };
     </script>
 </body>
 </html>
