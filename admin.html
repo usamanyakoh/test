@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการหลังบ้าน</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body { font-family: 'Arial', sans-serif; background-color: #fdf2f8; color: #1f2937; } 
+        #global-loader { display: none; position: fixed; inset: 0; background: rgba(255,255,255,0.8); z-index: 9999; align-items: center; justify-content: center; flex-direction: column; }
+        .seat { width: 30px; height: 30px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; color: #4b5563; }
+        .seat.standard-available { background-color: #fce7f3; border: 1px solid #f9a8d4; }
+        .seat.vip-locked { background-color: #fcd34d !important; border: 1px solid #fbbf24 !important; color: #b45309 !important; }
+        .seat.booked { background-color: #ef4444 !important; border: 1px solid #dc2626 !important; color: white !important; }
+        .cinema-screen { height: 40px; background: #fce7f3; border-radius: 4px; margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #be185d; letter-spacing: 0.1em; border: 1px solid #f9a8d4; }
+        
+        @media print { 
+            body * { visibility: hidden; } 
+            .print-active-map #admin-map-print-area, .print-active-map #admin-map-print-area * { visibility: visible; } 
+            .print-active-map #admin-map-print-area { position: absolute; left: 0; top: 0; width: 100%; } 
+            .print-active-report #print-report-area { display: block !important; visibility: visible !important; position: absolute; left: 0; top: 0; width: 100%; background: white; }
+            .print-active-report #print-report-area * { visibility: visible !important; }
+            .print\:hidden { display: none !important; } 
+        }
+        
+        #print-report-area { display: none; padding: 20px; }
+        #print-report-area table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+        #print-report-area th, #print-report-area td { border: 1px solid #f9a8d4; padding: 8px; text-align: left; color: #000; }
+        #print-report-area th { background-color: #fce7f3; color: #9d174d; font-weight: bold; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <div id="global-loader"><i class="fa-solid fa-circle-notch fa-spin text-5xl text-pink-600 mb-4"></i><p class="text-gray-700 font-semibold" id="loader-text">กำลังดำเนินการ...</p></div>
+
+    <!-- Login Modal -->
+    <div id="admin-login-modal" class="fixed inset-0 bg-[#5b5f68] z-50 flex items-center justify-center print:hidden p-4">
+        <div class="bg-white p-8 rounded-xl shadow-2xl max-w-[400px] w-full relative">
+            <h2 class="text-xl font-bold mb-6 text-center text-[#de2c7c]">เข้าสู่ระบบผู้ดูแลระบบ</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Username</label>
+                    <input type="text" id="admin-user" class="w-full border border-gray-200 p-2.5 rounded outline-none focus:border-pink-500">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">Password</label>
+                    <input type="password" id="admin-pass" class="w-full border border-gray-200 p-2.5 rounded outline-none focus:border-pink-500" onkeypress="if(event.key === 'Enter') loginAdmin();">
+                </div>
+                
+                <div class="mt-6 pt-2">
+                    <button onclick="loginAdmin()" class="w-full bg-[#de2c7c] hover:bg-pink-700 text-white font-bold py-2.5 rounded shadow transition">เข้าสู่ระบบ</button>
+                </div>
+                
+                <div class="text-center mt-4 pt-3 border-t border-gray-100">
+                    <button onclick="window.location.href='Index.html'" class="text-sm font-bold text-gray-500 hover:text-[#de2c7c] transition">
+                        <i class="fa-solid fa-arrow-left mr-1"></i> กลับหน้าหลัก
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="admin-dashboard" class="hidden flex-col min-h-screen p-4 md:p-8 z-10 print:hidden">
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm gap-4 border border-pink-100 border-t-4 border-t-pink-500">
+            <div>
+                <h1 class="text-2xl font-bold text-pink-800"><i class="fa-solid fa-shield-halved mr-2"></i> ระบบจัดการหลังบ้าน <span id="dash-event-name" class="text-sm text-gray-500 ml-2"></span></h1>
+                <div class="mt-2" id="dash-system-status-container">
+                    <span id="dash-system-status"></span>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap gap-2 justify-center items-center">
+                <button onclick="openSettingsMenu()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 h-[40px] rounded-lg text-sm shadow font-bold"><i class="fa-solid fa-gear mr-1"></i> ตั้งค่าระบบและโหมด</button>
+                <button onclick="openAdminBooking()" class="bg-green-600 hover:bg-green-700 text-white px-4 h-[40px] rounded-lg text-sm shadow"><i class="fa-solid fa-ticket mr-1"></i> จอง</button>
+                <button onclick="showAdminMap()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 h-[40px] rounded-lg text-sm shadow"><i class="fa-solid fa-map mr-1"></i> ผัง</button>
+                <button onclick="openExportModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 h-[40px] rounded-lg text-sm shadow"><i class="fa-solid fa-print mr-1"></i> พิมพ์</button>
+                <button onclick="logoutAdmin()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 h-[40px] rounded-lg text-sm shadow"><i class="fa-solid fa-right-from-bracket"></i></button>
+            </div>
+        </div>
+        
+        <div class="bg-white p-6 rounded-xl shadow-lg flex-grow overflow-hidden flex flex-col border border-pink-100">
+            <div class="flex justify-between mb-4 items-center">
+                <h2 class="text-xl font-bold text-gray-800">รายการจองที่นั่งทั้งหมด</h2>
+                <button onclick="loadAdminData()" class="bg-pink-100 text-pink-700 px-4 py-2 rounded font-bold hover:bg-pink-200 transition"><i class="fa-solid fa-rotate mr-1"></i> รีเฟรชข้อมูล</button>
+            </div>
+            <div class="overflow-x-auto rounded-lg border border-pink-200 flex-grow">
+                <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
+                    <thead class="text-xs text-pink-800 uppercase bg-pink-50 sticky top-0 shadow-sm">
+                        <tr><th class="px-4 py-3">วันเวลาที่จอง</th><th class="px-4 py-3">สมาชิก</th><th class="px-4 py-3">ที่นั่ง</th><th class="px-4 py-3">ชื่อ-สกุล</th><th class="px-4 py-3">เบอร์/อีเมล</th><th class="px-4 py-3">RefCode</th><th class="px-4 py-3 text-center">จัดการ</th></tr>
+                    </thead>
+                    <tbody id="admin-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Settings Modal -->
+    <div id="admin-settings-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white p-6 rounded-2xl max-w-md w-full shadow-2xl border-t-8 border-purple-600 max-h-[90vh] overflow-y-auto">
+            <h2 class="text-xl font-bold mb-4 text-purple-700 border-b pb-2"><i class="fa-solid fa-gear mr-2"></i>ตั้งค่าระบบจองที่นั่ง</h2>
+            <div class="space-y-3">
+                <div><label class="text-xs font-bold text-gray-700 block mb-1">ชื่อระบบ</label><input type="text" id="set-sys-name" class="w-full border border-purple-200 p-2 rounded outline-none focus:border-purple-500 text-sm"></div>
+                <div><label class="text-xs font-bold text-gray-700 block mb-1">ชื่อกิจกรรม</label><input type="text" id="set-event-name" class="w-full border border-purple-200 p-2 rounded outline-none focus:border-purple-500 text-sm"></div>
+                <div><label class="text-xs font-bold text-gray-700 block mb-1">วันที่จัดงาน</label><input type="text" id="set-event-date" class="w-full border border-purple-200 p-2 rounded outline-none focus:border-purple-500 text-sm"></div>
+                <div><label class="text-xs font-bold text-gray-700 block mb-1">เวลา (เช่น 09:00 - 12:00)</label><input type="text" id="set-event-time" class="w-full border border-purple-200 p-2 rounded outline-none focus:border-purple-500 text-sm"></div>
+                <div><label class="text-xs font-bold text-gray-700 block mb-1">สถานที่จัดงาน (Default Center)</label><input type="text" id="set-center" class="w-full border border-purple-200 p-2 rounded outline-none focus:border-purple-500 text-sm"></div>
+            </div>
+
+            <!-- หมวดตั้งค่าสถานะระบบ -->
+            <div class="border-t border-purple-200 mt-5 pt-4">
+                <h3 class="text-sm font-bold text-purple-700 mb-2"><i class="fa-solid fa-power-off mr-1"></i> โหมดสถานะระบบ</h3>
+                <div>
+                    <select id="set-system-status" onchange="toggleSettingsStatusUI()" class="w-full border border-purple-200 p-2 rounded outline-none focus:border-purple-500 font-bold text-sm bg-gray-50">
+                        <option value="OPEN">🟢 เปิด (รับทันที)</option>
+                        <option value="AUTO">⏳ ออโต้ (รอเปิดตามเวลาที่ตั้งไว้)</option>
+                        <option value="CLOSED">🔴 ปิด (ปิดรับทันที)</option>
+                    </select>
+                </div>
+                
+                <!-- AUTO Options (ไม่มีกล่องใส่ข้อความ ใช้ของเดิมในช่อง A7) -->
+                <div id="set-auto-options" class="hidden space-y-3 mt-3 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                    <p class="text-[10px] text-blue-600 font-bold mb-1">* ข้อความแจ้งเตือนจะใช้ค่าเดิมจากช่อง A7 ทันที</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs font-bold text-gray-700 block mb-1">วันที่เปิด</label>
+                            <input type="date" id="set-auto-date" class="w-full border p-2 rounded outline-none text-sm focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-700 block mb-1">เวลา (24น.)</label>
+                            <input type="time" id="set-auto-time" class="w-full border p-2 rounded outline-none text-sm focus:border-blue-500">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- CLOSED Options (กล่องข้อความที่จะเด้งตอนตั้งค่าด้วย Swal) -->
+                <div id="set-closed-options" class="hidden space-y-2 mt-3 bg-red-50 p-3 rounded-lg border border-red-200">
+                    <div>
+                        <label class="text-xs font-bold text-gray-700 block mb-1">ข้อความแจ้งเตือนเมื่อระบบปิด</label>
+                        <textarea id="set-close-msg" rows="2" class="w-full border p-2 rounded outline-none text-sm focus:border-red-500"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-2 mt-6 border-t pt-4">
+                <button onclick="saveSystemSettings()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded shadow"><i class="fa-solid fa-save mr-1"></i> บันทึกการตั้งค่า</button>
+                <button onclick="document.getElementById('admin-settings-modal').classList.add('hidden')" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 rounded">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Print / Export Modal -->
+    <div id="admin-export-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center backdrop-blur-sm print:hidden p-4">
+        <div class="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full relative border-t-8 border-pink-500">
+            <h2 class="text-xl font-bold mb-4 text-pink-700 border-b border-pink-100 pb-2"><i class="fa-solid fa-print"></i> พิมพ์ / ดาวน์โหลดข้อมูล</h2>
+            <div class="space-y-4 mt-4">
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">เลือกประเภทข้อมูล:</label>
+                    <select id="export-type" onchange="toggleExportOptions()" class="w-full border border-pink-200 p-2 rounded focus:ring-pink-500 outline-none">
+                        <option value="bookings">รายงานการจองที่นั่ง (เรียงตามที่นั่ง)</option>
+                        <option value="operations">ประวัติการแก้ไขและยกเลิกที่นั่ง</option>
+                    </select>
+                </div>
+                <div id="export-center-wrapper">
+                    <label class="block text-sm font-bold text-gray-700 mb-2">เลือกศูนย์บริการ:</label>
+                    <select id="export-center" class="w-full border border-pink-200 p-2 rounded focus:ring-pink-500 outline-none">
+                        <option value="all">ข้อมูลทั้งหมด (ทุกศูนย์ฯ)</option>
+                        <option value="ศูนย์นันทนาการสะพานพระราม 9">ศูนย์นันทนาการสะพานพระราม 9</option>
+                        <option value="ศูนย์นันทนาการทุ่งครุ">ศูนย์นันทนาการทุ่งครุ</option>
+                        <option value="ศูนย์นันทนาการจอมทอง">ศูนย์นันทนาการจอมทอง</option>
+                        <option value="ศูนย์นันทนาการเวฬุราชิน">ศูนย์นันทนาการเวฬุราชิน</option>
+                        <option value="ศูนย์นันทนาการบางขุนเทียน">ศูนย์นันทนาการบางขุนเทียน</option>
+                        <option value="ศูนย์นันทนาการอัมพวา">ศูนย์นันทนาการอัมพวา</option>
+                    </select>
+                </div>
+                <div class="flex flex-col gap-2 mt-6">
+                    <div class="flex gap-2">
+                        <button type="button" onclick="executePrint()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded shadow"><i class="fa-solid fa-print"></i> พิมพ์ (Print)</button>
+                        <button type="button" onclick="executeExport()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded shadow"><i class="fa-solid fa-file-excel"></i> โหลด CSV</button>
+                    </div>
+                    <button type="button" onclick="closeExportModal()" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 rounded">ยกเลิก</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="print-report-area"></div>
+
+    <!-- Edit Booking Modal -->
+    <div id="admin-edit-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center backdrop-blur-sm print:hidden p-4">
+        <div class="bg-white p-6 rounded-2xl shadow-2xl max-w-lg w-full relative max-h-[90vh] overflow-y-auto border-t-8 border-pink-500">
+            <h2 class="text-xl font-bold mb-4 text-pink-700 border-b border-pink-100 pb-2">แก้ไขข้อมูลและที่นั่ง</h2>
+            <form id="edit-booking-form" class="space-y-3">
+                <input type="hidden" id="edit-ref">
+                <div class="bg-pink-50 p-3 rounded border border-pink-200 overflow-x-auto mb-2">
+                    <p class="text-xs font-bold text-pink-700 mb-2">คลิกเลือกที่นั่งใหม่จากผัง</p>
+                    <div id="admin-mini-seat-grid" class="inline-grid gap-1"></div>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="col-span-1"><label class="block text-xs font-medium text-gray-700">ที่นั่งที่เลือก</label>
+                        <input type="text" id="edit-seat" readonly class="w-full border border-pink-200 p-2 rounded outline-none font-bold text-center bg-white text-pink-700">
+                    </div>
+                    <div class="col-span-2"><label class="block text-xs font-medium text-gray-700">คำนำหน้า</label>
+                        <select id="edit-title" class="w-full border border-pink-200 p-2 rounded focus:ring-pink-500 outline-none"><option value="นาย">นาย</option><option value="นาง">นาง</option><option value="นางสาว">นางสาว</option></select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div><label class="block text-xs font-medium text-gray-700">ชื่อ</label><input type="text" id="edit-fname" class="w-full border border-pink-200 focus:border-pink-500 p-2 rounded outline-none"></div>
+                    <div><label class="block text-xs font-medium text-gray-700">นามสกุล</label><input type="text" id="edit-lname" class="w-full border border-pink-200 focus:border-pink-500 p-2 rounded outline-none"></div>
+                </div>
+                <div><label class="block text-xs font-medium text-gray-700">เบอร์โทรศัพท์</label><input type="text" id="edit-phone" class="w-full border border-pink-200 focus:border-pink-500 p-2 rounded outline-none"></div>
+                <div><label class="block text-xs font-medium text-gray-700">อีเมล</label><input type="text" id="edit-email" class="w-full border border-pink-200 focus:border-pink-500 p-2 rounded outline-none"></div>
+                <div class="flex gap-2 mt-4 pt-4 border-t border-pink-100">
+                    <button type="button" onclick="saveEditBooking()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded">บันทึก & ส่งตั๋วใหม่</button>
+                    <button type="button" onclick="closeEditModal()" class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 rounded">ยกเลิก/ปิด</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Map Modal -->
+    <div id="admin-map-modal" class="hidden fixed inset-0 bg-white z-[60] flex-col print:flex">
+        <div class="p-4 bg-gray-800 text-white flex justify-between items-center print:hidden border-b-4 border-pink-500">
+            <h2 class="text-xl font-bold"><i class="fa-solid fa-map-location-dot text-pink-400"></i> แผนผังที่นั่งปัจจุบัน</h2>
+            <div class="flex gap-3">
+                <button onclick="printAdminMap()" class="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded font-bold"><i class="fa-solid fa-print"></i> พิมพ์แผนผัง</button>
+                <button onclick="closeAdminMap()" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded font-bold"><i class="fa-solid fa-times"></i> ปิด</button>
+            </div>
+        </div>
+        <div id="admin-map-print-area" class="flex-grow p-4 overflow-auto text-center bg-pink-50/30">
+            <h1 class="text-2xl font-bold text-gray-800 mb-2">แผนผังที่นั่ง <span id="admin-map-title" class="text-pink-700"></span></h1>
+            <div class="cinema-screen mx-auto max-w-3xl mt-4 mb-6">SCREEN / เวที</div>
+            <div class="flex justify-center relative"><div id="admin-seat-grid" style="display: inline-grid; gap: 0.3rem;"></div></div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 🚨 นำ Web App URL ของ Google Apps Script มาใส่ตรงนี้ 🚨
+        // ==========================================
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8W0TEaMnn3AyMtt2TuSIO4r3Jrj7kkT0fN9Rxv6Rw2Rqqyce0fjtI2WyoX40Sb3Ru/exec'; 
+        
+        let adminBookingsData = []; let eventNameData = "";
+        let sysSettingsData = { sysName: "", eventName: "", eventDate: "", eventTime: "", defaultCenter: "", rawStatus: "OPEN", autoMsg: "", autoDateInput: "", autoTime: "", closeMessage: "" };
+
+        const ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']; const SEATS_PER_ROW = 15; const VIP_ROWS = ['A', 'E']; 
+
+        let sessionId = localStorage.getItem('bma_session_id');
+        if (!sessionId) { sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2,5); localStorage.setItem('bma_session_id', sessionId); }
+        let lockedEditSeat = null;
+
+        let idleTimeout;
+        const IDLE_TIME_LIMIT = 30 * 60 * 1000;
+
+        function resetIdleTimer() {
+            if(localStorage.getItem('bma_admin_logged_in') === 'true') {
+                clearTimeout(idleTimeout);
+                idleTimeout = setTimeout(() => {
+                    Swal.fire({
+                        icon: 'info', title: 'หมดเวลาเซสชัน',
+                        text: 'คุณไม่ได้ทำรายการใดๆ เกิน 30 นาที ระบบได้นำคุณออกจากระบบอัตโนมัติเพื่อความปลอดภัย',
+                        confirmButtonColor: '#ec4899'
+                    }).then(() => logoutAdmin());
+                }, IDLE_TIME_LIMIT);
+            }
+        }
+
+        function setupAutoLogout() {
+            ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'].forEach(evt => {
+                document.addEventListener(evt, resetIdleTimer, true);
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            setupAutoLogout(); 
+            if (localStorage.getItem('bma_admin_logged_in') === 'true') {
+                document.getElementById('admin-login-modal').classList.add('hidden');
+                document.getElementById('admin-dashboard').classList.remove('hidden');
+                document.getElementById('admin-dashboard').classList.add('flex');
+                initDashboard();
+                resetIdleTimer();
+            }
+        });
+
+        setInterval(async () => {
+            if(document.getElementById('admin-dashboard').classList.contains('hidden')) return;
+            try { 
+                const res = await fetchAPI('getSettings'); 
+                if(res.status === 'success') { 
+                    sysSettingsData.autoMsg = res.autoMsg || "";
+                    sysSettingsData.closeMessage = res.closeMessage || "";
+                    sysSettingsData.autoDateInput = res.autoDateInput || "";
+                    sysSettingsData.autoTime = res.autoTime || "";
+
+                    if(sysSettingsData.rawStatus !== res.rawStatus) {
+                        sysSettingsData.rawStatus = res.rawStatus;
+                        updateStatusBadge(res);
+                    }
+                } 
+            } catch(e){}
+        }, 8000);
+
+        async function fetchAPI(action, data = {}) {
+            data.action = action;
+            try { const response = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'text/plain;charset=utf-8' } }); return await response.json(); } catch (error) { throw error; }
+        }
+
+        function showLoader(text) { document.getElementById('loader-text').innerText = text; document.getElementById('global-loader').style.display = 'flex'; }
+        function hideLoader() { document.getElementById('global-loader').style.display = 'none'; }
+
+        async function loginAdmin() {
+            const u = document.getElementById('admin-user').value; const p = document.getElementById('admin-pass').value;
+            if(!u || !p) { Swal.fire({ icon: 'warning', title: 'แจ้งเตือน', text: 'กรุณากรอก Username และ Password', confirmButtonColor: '#ec4899' }); return; }
+            showLoader('ตรวจสอบสิทธิ์...');
+            try {
+                const res = await fetchAPI('login', {username: u, password: p});
+                if(res.status === 'success') { 
+                    localStorage.setItem('bma_admin_logged_in', 'true');
+                    document.getElementById('admin-login-modal').classList.add('hidden'); 
+                    document.getElementById('admin-dashboard').classList.remove('hidden'); 
+                    document.getElementById('admin-dashboard').classList.add('flex'); 
+                    initDashboard(); 
+                    resetIdleTimer(); 
+                } else { Swal.fire({ icon: 'error', title: 'เข้าสู่ระบบล้มเหลว', text: res.message, confirmButtonColor: '#ec4899' }); }
+            } catch(e) {} hideLoader();
+        }
+
+        function logoutAdmin() { 
+            localStorage.removeItem('bma_admin_logged_in'); 
+            clearTimeout(idleTimeout); 
+            location.reload(); 
+        }
+
+        function updateStatusBadge(res) {
+            const statusBadge = document.getElementById('dash-system-status');
+            if (res.rawStatus === 'OPEN') {
+                statusBadge.className = "text-xs font-bold px-3 py-1.5 rounded bg-green-100 text-green-800 border border-green-300 inline-block";
+                statusBadge.innerHTML = "<i class='fa-solid fa-circle-check mr-1'></i> 🟢 สถานะระบบ: เปิดรับการจอง";
+            } else if (res.rawStatus === 'AUTO') {
+                statusBadge.className = "text-xs font-bold px-3 py-1.5 rounded bg-blue-100 text-blue-800 border border-blue-300 inline-block";
+                statusBadge.innerHTML = `<i class='fa-solid fa-clock mr-1'></i> ⏳ สถานะระบบ: รอเปิดอัตโนมัติ (${res.autoDate || ''} เวลา ${res.autoTime || ''} น.)`;
+            } else {
+                statusBadge.className = "text-xs font-bold px-3 py-1.5 rounded bg-red-100 text-red-800 border border-red-300 inline-block";
+                statusBadge.innerHTML = "<i class='fa-solid fa-ban mr-1'></i> 🔴 สถานะระบบ: ปิดระบบชั่วคราว";
+            }
+        }
+
+        async function initDashboard() {
+            try { 
+                const res = await fetchAPI('getSettings'); 
+                if(res.status === 'success') { 
+                    eventNameData = res.eventName; 
+                    
+                    sysSettingsData.sysName = res.sysName;
+                    sysSettingsData.eventName = res.eventName;
+                    sysSettingsData.eventDate = res.eventDate;
+                    sysSettingsData.eventTime = res.eventTime;
+                    sysSettingsData.defaultCenter = res.defaultCenter;
+                    sysSettingsData.rawStatus = res.rawStatus || "OPEN";
+                    sysSettingsData.autoMsg = res.autoMsg || "";
+                    sysSettingsData.autoDateInput = res.autoDateInput || "";
+                    sysSettingsData.autoTime = res.autoTime || "";
+                    sysSettingsData.closeMessage = res.closeMessage || "";
+
+                    document.getElementById('dash-event-name').innerText = `(${res.eventName})`; 
+                    updateStatusBadge(res);
+                } 
+            } catch(e){} 
+            loadAdminData();
+        }
+
+        async function toggleSettingsStatusUI() {
+            const status = document.getElementById('set-system-status').value;
+            document.getElementById('set-auto-options').style.display = status === 'AUTO' ? 'block' : 'none';
+            document.getElementById('set-closed-options').style.display = status === 'CLOSED' ? 'block' : 'none';
+            
+            // ป๊อปอัพเด้งทันทีเมื่อเลือกโหมด CLOSED
+            if (status === 'CLOSED') {
+                const { value: closeMsg } = await Swal.fire({
+                    title: 'ตั้งค่าข้อความปิดระบบ',
+                    input: 'textarea',
+                    inputValue: document.getElementById('set-close-msg').value || sysSettingsData.closeMessage,
+                    showCancelButton: true,
+                    confirmButtonText: 'ตกลง',
+                    cancelButtonText: 'ยกเลิก',
+                    confirmButtonColor: '#ef4444'
+                });
+                
+                if (closeMsg !== undefined) {
+                    document.getElementById('set-close-msg').value = closeMsg;
+                }
+            }
+        }
+
+        function openSettingsMenu() {
+            document.getElementById('set-sys-name').value = sysSettingsData.sysName;
+            document.getElementById('set-event-name').value = sysSettingsData.eventName;
+            document.getElementById('set-event-date').value = sysSettingsData.eventDate;
+            document.getElementById('set-event-time').value = sysSettingsData.eventTime;
+            document.getElementById('set-center').value = sysSettingsData.defaultCenter;
+
+            document.getElementById('set-system-status').value = sysSettingsData.rawStatus;
+            document.getElementById('set-auto-date').value = sysSettingsData.autoDateInput;
+            document.getElementById('set-auto-time').value = sysSettingsData.autoTime;
+            document.getElementById('set-close-msg').value = sysSettingsData.closeMessage;
+
+            document.getElementById('set-auto-options').style.display = sysSettingsData.rawStatus === 'AUTO' ? 'block' : 'none';
+            document.getElementById('set-closed-options').style.display = sysSettingsData.rawStatus === 'CLOSED' ? 'block' : 'none';
+
+            document.getElementById('admin-settings-modal').classList.remove('hidden');
+        }
+
+        async function saveSystemSettings() {
+            document.getElementById('admin-settings-modal').classList.add('hidden');
+            showLoader('กำลังบันทึกการตั้งค่า...');
+            
+            const payload = {
+                sysName: document.getElementById('set-sys-name').value,
+                eventName: document.getElementById('set-event-name').value,
+                eventDate: document.getElementById('set-event-date').value,
+                eventTime: document.getElementById('set-event-time').value,
+                defaultCenter: document.getElementById('set-center').value,
+                status: document.getElementById('set-system-status').value,
+                autoDate: document.getElementById('set-auto-date').value,
+                autoTime: document.getElementById('set-auto-time').value,
+                closeMessage: document.getElementById('set-close-msg').value
+            };
+
+            try {
+                const res = await fetchAPI('save_settings', payload);
+                if(res.status === 'success') {
+                    Swal.fire({ icon: 'success', title: 'บันทึกข้อมูลเรียบร้อย', timer: 1500, showConfirmButton: false });
+                    initDashboard();
+                } else { Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: res.message, confirmButtonColor: '#ec4899' }); }
+            } catch(e) { Swal.fire({ icon: 'error', title: 'เชื่อมต่อล้มเหลว' }); }
+            hideLoader();
+        }
+
+        async function loadAdminData() {
+            showLoader('กำลังโหลดข้อมูลการจอง...');
+            try {
+                const res = await fetchAPI('get_bookings');
+                if(res.status === 'success') {
+                    adminBookingsData = res.data; const tbody = document.getElementById('admin-table-body'); tbody.innerHTML = '';
+                    for(let i=1; i<res.data.length; i++){
+                        const row = res.data[i]; const dateObj = new Date(row[0]);
+                        const rowHtml = `<tr class="border-b border-pink-100 hover:bg-pink-50/50">
+                            <td class="px-4 py-3 text-xs">${dateObj.toLocaleDateString('th-TH')} ${dateObj.toLocaleTimeString('th-TH')}</td>
+                            <td class="px-4 py-3 font-semibold text-pink-700">${row[1]}</td>
+                            <td class="px-4 py-3"><span class="bg-pink-100 text-pink-800 border border-pink-200 px-2 py-1 rounded font-bold">${row[2]}</span></td>
+                            <td class="px-4 py-3">${row[3]} ${row[4]} ${row[5]}</td>
+                            <td class="px-4 py-3 text-xs">${row[6]}<br>${row[7]}</td>
+                            <td class="px-4 py-3 font-mono font-bold text-gray-500 text-xs">${row[8]}</td>
+                            <td class="px-4 py-3 text-center print:hidden">
+                                <button onclick="openEditModal('${row[8]}', '${row[2]}', '${row[3]}', '${row[4]}', '${row[5]}', '${row[6]}', '${row[7]}')" class="text-blue-600 hover:text-white hover:bg-blue-600 px-2 py-1 rounded border border-blue-600 transition text-xs font-bold mr-1"><i class="fa-solid fa-pen"></i> แก้ไข</button>
+                                <button onclick="cancelBooking('${row[8]}', '${row[2]}')" class="text-red-500 hover:text-white hover:bg-red-500 px-2 py-1 rounded border border-red-500 transition text-xs font-bold"><i class="fa-solid fa-ban"></i> ยกเลิก</button>
+                            </td></tr>`;
+                        tbody.innerHTML += rowHtml;
+                    }
+                }
+            } catch(e) {} hideLoader();
+        }
+
+        async function openEditModal(ref, seat, title, fname, lname, phone, email) {
+            document.getElementById('edit-ref').value = ref; document.getElementById('edit-title').value = title; 
+            document.getElementById('edit-fname').value = fname; document.getElementById('edit-lname').value = lname; 
+            document.getElementById('edit-phone').value = phone; document.getElementById('edit-email').value = email;
+            document.getElementById('admin-edit-modal').classList.remove('hidden');
+            showLoader('โหลดผังที่นั่ง...');
+            try { const res = await fetchAPI('getSeats'); if(res.status === 'success') renderMiniMap(res.data, seat, 'admin-mini-seat-grid', 'edit-seat'); } catch(e){} hideLoader();
+        }
+        
+        function closeEditModal() { 
+            if(lockedEditSeat) { fetchAPI('unlockSeat', { seatId: lockedEditSeat, sessionId: sessionId }); lockedEditSeat = null; }
+            document.getElementById('admin-edit-modal').classList.add('hidden'); 
+        }
+        
+        async function saveEditBooking() {
+            const data = {
+                refCode: document.getElementById('edit-ref').value, newSeat: document.getElementById('edit-seat').value.trim(), actionBy: "แอดมิน",
+                title: document.getElementById('edit-title').value, fname: document.getElementById('edit-fname').value, 
+                lname: document.getElementById('edit-lname').value, phone: document.getElementById('edit-phone').value, email: document.getElementById('edit-email').value
+            };
+            if(!data.newSeat) { Swal.fire({ icon: 'warning', title: 'แจ้งเตือน', text: 'กรุณาระบุที่นั่ง' }); return; }
+            document.getElementById('admin-edit-modal').classList.add('hidden'); 
+            showLoader('กำลังอัปเดตและส่งตั๋วใหม่ (ใช้เวลาสักครู่)...');
+            try {
+                const res = await fetchAPI('edit_booking', data);
+                if(res.status === 'success') { 
+                    Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'อัปเดตข้อมูลและส่งตั๋วใหม่ให้ผู้จองเรียบร้อยแล้ว', confirmButtonColor: '#ec4899' });
+                    lockedEditSeat = null; loadAdminData(); 
+                }
+                else { Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: res.message, confirmButtonColor: '#ec4899' }); document.getElementById('admin-edit-modal').classList.remove('hidden'); }
+            } catch(e) { Swal.fire({ icon: 'error', title: 'เชื่อมต่อล้มเหลว', text: 'ไม่สามารถอัปเดตข้อมูลได้' }); } hideLoader();
+        }
+
+        async function cancelBooking(refCode, seatName) {
+            const result = await Swal.fire({
+                title: 'ยืนยันการยกเลิก?',
+                html: `ต้องการยกเลิกที่นั่ง <b>${seatName}</b> ใช่หรือไม่?<br><span class="text-sm text-red-500">ระบบจะส่งอีเมลแจ้งเตือนพร้อมตั๋วที่ถูกประทับตรายกเลิก</span>`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: 'ใช่, ยกเลิก',
+                cancelButtonText: 'ย้อนกลับ'
+            });
+            if(!result.isConfirmed) return;
+            
+            showLoader('กำลังยกเลิกและส่งอีเมลแจ้งเตือน...');
+            try { 
+                const res = await fetchAPI('cancel_booking', {refCode: refCode, actionBy: "แอดมิน"}); 
+                if(res.status === 'success') { Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'ยกเลิกที่นั่งเรียบร้อยแล้ว', timer: 1500, showConfirmButton: false }); loadAdminData(); } 
+            } catch(e) {} hideLoader();
+        }
+
+        function openExportModal() { document.getElementById('admin-export-modal').classList.remove('hidden'); }
+        function closeExportModal() { document.getElementById('admin-export-modal').classList.add('hidden'); }
+        function toggleExportOptions() {
+            const type = document.getElementById('export-type').value;
+            document.getElementById('export-center-wrapper').style.display = type === 'bookings' ? 'block' : 'none';
+        }
+
+        function sortSeatsData(dataArray) {
+            return dataArray.sort((a, b) => {
+                let seatA = String(a[2]); let seatB = String(b[2]);
+                let rowA = seatA.charAt(0); let numA = parseInt(seatA.substring(1));
+                let rowB = seatB.charAt(0); let numB = parseInt(seatB.substring(1));
+                if (rowA === rowB) return numA - numB;
+                return rowA.localeCompare(rowB);
+            });
+        }
+
+        async function executePrint() {
+            const exportType = document.getElementById('export-type').value;
+            const selectedCenter = document.getElementById('export-center').value;
+            let reportHtml = "";
+
+            if (exportType === 'bookings') {
+                if (adminBookingsData.length <= 1) { Swal.fire({icon: 'warning', title: 'ไม่มีข้อมูลให้พิมพ์'}); return; }
+                let filteredData = adminBookingsData.slice(1);
+                if (selectedCenter !== 'all') { filteredData = filteredData.filter(row => row[1] === selectedCenter); }
+                if (filteredData.length === 0) { Swal.fire({icon: 'warning', title: 'ไม่พบข้อมูลศูนย์บริการนี้'}); return; }
+                filteredData = sortSeatsData(filteredData);
+                
+                let titleStr = selectedCenter === 'all' ? "ทุกศูนย์นันทนาการ" : selectedCenter;
+                reportHtml = `<h2 style="text-align:center; color:#9d174d; margin-bottom:15px; font-family:sans-serif;">รายงานการจองที่นั่ง - ${titleStr}</h2>`;
+                reportHtml += `<table><tr><th>วันเวลาที่จอง</th><th>ศูนย์นันทนาการ</th><th>ที่นั่ง</th><th>ชื่อ-สกุล</th><th>เบอร์โทร</th><th>RefCode</th></tr>`;
+                
+                filteredData.forEach(row => {
+                    let dateStr = new Date(row[0]).toLocaleString('th-TH');
+                    reportHtml += `<tr><td>${dateStr}</td><td>${row[1]}</td><td><b>${row[2]}</b></td><td>${row[3]}${row[4]} ${row[5]}</td><td>${row[6]}</td><td>${row[8]}</td></tr>`;
+                });
+                reportHtml += `</table>`;
+                
+            } else if (exportType === 'operations') {
+                showLoader('กำลังโหลดข้อมูลประวัติ...');
+                try {
+                    const res = await fetchAPI('get_operations');
+                    if (res.status === 'success' && res.data.length > 1) {
+                        let opsData = res.data.slice(1);
+                        reportHtml = `<h2 style="text-align:center; color:#9d174d; margin-bottom:15px; font-family:sans-serif;">รายงานประวัติการแก้ไขและยกเลิกที่นั่ง</h2>`;
+                        reportHtml += `<table><tr><th>ชื่อผู้จอง</th><th>เวลาจองเดิม</th><th>สถานะ</th><th>รายละเอียด</th><th>เวลาที่แก้ไข/ยกเลิก</th><th>ผู้ดำเนินการ</th></tr>`;
+                        opsData.forEach(row => {
+                            let d1 = row[1] ? new Date(row[1]).toLocaleString('th-TH') : "-";
+                            let d2 = row[4] ? new Date(row[4]).toLocaleString('th-TH') : "-";
+                            reportHtml += `<tr><td>${row[0]}</td><td>${d1}</td><td>${row[2]}</td><td>${row[3]}</td><td>${d2}</td><td>${row[5]}</td></tr>`;
+                        });
+                        reportHtml += `</table>`;
+                    } else { Swal.fire({icon: 'warning', title: 'ยังไม่มีประวัติการทำรายการ'}); hideLoader(); return; }
+                } catch (e) { Swal.fire({icon: 'error', title: 'ดึงข้อมูลผิดพลาด'}); hideLoader(); return; }
+                hideLoader();
+            }
+
+            document.getElementById('print-report-area').innerHTML = reportHtml;
+            closeExportModal();
+            document.body.classList.add('print-active-report');
+            setTimeout(() => { window.print(); document.body.classList.remove('print-active-report'); document.getElementById('print-report-area').innerHTML = ''; }, 500);
+        }
+
+        async function executeExport() {
+            const exportType = document.getElementById('export-type').value;
+            if (exportType === 'bookings') {
+                if (adminBookingsData.length <= 1) { Swal.fire({icon: 'warning', title: 'ไม่มีข้อมูลให้ดาวน์โหลด'}); return; }
+                const selectedCenter = document.getElementById('export-center').value;
+                let filteredData = adminBookingsData.slice(1);
+                if (selectedCenter !== 'all') { filteredData = filteredData.filter(row => row[1] === selectedCenter); }
+                if (filteredData.length === 0) { Swal.fire({icon: 'warning', title: 'ไม่พบข้อมูลศูนย์บริการนี้'}); return; }
+
+                filteredData = sortSeatsData(filteredData);
+                let csvContent = "data:text/csv;charset=utf-8,\uFEFFวันเวลาที่จอง,ศูนย์นันทนาการ (สมาชิก),ที่นั่ง,คำนำหน้า,ชื่อ,นามสกุล,เบอร์โทร,อีเมล,RefCode\n";
+                for(let i=0; i<filteredData.length; i++){
+                    let row = filteredData[i]; let dateStr = new Date(row[0]).toLocaleString('th-TH');
+                    csvContent += `"${dateStr}","${row[1]}","${row[2]}","${row[3]}","${row[4]}","${row[5]}","${row[6]}","${row[7]}","${row[8]}"\n`;
+                }
+                let fileName = selectedCenter === 'all' ? "รายงานการจองที่นั่ง_ทั้งหมด.csv" : `รายงานการจองที่นั่ง_${selectedCenter}.csv`;
+                downloadFile(csvContent, fileName);
+                closeExportModal();
+            } 
+            else if (exportType === 'operations') {
+                showLoader('กำลังโหลดประวัติ...');
+                try {
+                    const res = await fetchAPI('get_operations');
+                    if (res.status === 'success' && res.data.length > 1) {
+                        let opsData = res.data;
+                        let csvContent = "data:text/csv;charset=utf-8,\uFEFFชื่อผู้จอง,วันเวลาที่จอง (อ้างอิง),สถานะ,รายละเอียด,วันเวลาดำเนินการ,ผู้ดำเนินการ\n";
+                        for(let i=1; i<opsData.length; i++){
+                            let row = opsData[i]; 
+                            let bookDateStr = row[1] ? new Date(row[1]).toLocaleString('th-TH') : "-";
+                            let opDateStr = row[4] ? new Date(row[4]).toLocaleString('th-TH') : "-";
+                            csvContent += `"${row[0]}","${bookDateStr}","${row[2]}","${row[3]}","${opDateStr}","${row[5]}"\n`;
+                        }
+                        downloadFile(csvContent, "ประวัติการแก้ไขและยกเลิก_Operations.csv");
+                        closeExportModal();
+                    } else { Swal.fire({icon: 'warning', title: 'ยังไม่มีประวัติการดำเนินงาน'}); }
+                } catch (e) { Swal.fire({icon: 'error', title: 'ดึงข้อมูลผิดพลาด'}); }
+                hideLoader();
+            }
+        }
+        
+        function downloadFile(content, filename) {
+            var encodedUri = encodeURI(content); var link = document.createElement("a");
+            link.setAttribute("href", encodedUri); link.setAttribute("download", filename);
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+
+        function openAdminBooking() { window.location.href = "Index.html?admin=true"; }
+
+        function printAdminMap() {
+            document.body.classList.add('print-active-map');
+            window.print();
+            document.body.classList.remove('print-active-map');
+        }
+
+        async function showAdminMap() {
+            document.getElementById('admin-map-modal').classList.remove('hidden'); document.getElementById('admin-map-title').innerText = eventNameData;
+            showLoader('กำลังโหลดแผนผัง...');
+            try {
+                const response = await fetchAPI('getSeats');
+                if (response.status === 'success') {
+                    let seatsMap = response.data || {}; const grid = document.getElementById('admin-seat-grid');
+                    grid.style.gridTemplateColumns = `auto repeat(${SEATS_PER_ROW}, minmax(0, 1fr))`; grid.innerHTML = '';
+                    ROWS.forEach(row => {
+                        const label = document.createElement('div'); label.className = "flex items-center justify-center font-bold text-gray-500 pr-2 text-xs"; label.innerText = row; grid.appendChild(label);
+                        const isVIP = VIP_ROWS.includes(row);
+                        for (let i = 1; i <= SEATS_PER_ROW; i++) {
+                            const seatId = `${row}${i}`; const seat = document.createElement('div');
+                            if (isVIP) { seat.className = 'seat vip-locked'; seat.innerText = 'VIP'; } 
+                            else { 
+                                seat.className = 'seat standard-available'; seat.innerText = seatId; 
+                                if(seatsMap[seatId] && seatsMap[seatId].status === 'booked') { seat.className = 'seat booked'; }
+                            }
+                            grid.appendChild(seat);
+                        }
+                    });
+                }
+            } catch(e) { Swal.fire({icon: 'error', title: 'ไม่สามารถโหลดแผนผังได้'}); } hideLoader();
+        }
+        function closeAdminMap() { document.getElementById('admin-map-modal').classList.add('hidden'); }
+
+        function renderMiniMap(seatsMap, currentSeat, containerId, inputId) {
+            const grid = document.getElementById(containerId); grid.style.gridTemplateColumns = `auto repeat(${SEATS_PER_ROW}, minmax(0, 1fr))`; grid.innerHTML = '';
+            document.getElementById(inputId).value = currentSeat;
+            lockedEditSeat = null;
+
+            ROWS.forEach(row => {
+                const label = document.createElement('div'); label.className = "flex items-center justify-center font-bold text-gray-500 pr-1 text-[10px]"; label.innerText = row; grid.appendChild(label);
+                const isVIP = VIP_ROWS.includes(row);
+                for (let i = 1; i <= SEATS_PER_ROW; i++) {
+                    const seatId = `${row}${i}`; const seat = document.createElement('div'); seat.className = "w-7 h-7 rounded flex items-center justify-center text-[10px] font-bold transition ";
+                    
+                    if (seatId === currentSeat) {
+                        seat.className += "bg-blue-500 text-white border-blue-600 border ring-2 ring-blue-300 current-seat-mark cursor-pointer"; seat.innerText = seatId;
+                    } else if (isVIP) { 
+                        seat.className += "bg-yellow-400 text-yellow-900 opacity-60 cursor-not-allowed"; seat.innerText = 'V';
+                    } else if (seatsMap[seatId] && seatsMap[seatId].status === 'booked') { 
+                        seat.className += "bg-red-500 text-white opacity-60 cursor-not-allowed"; seat.innerText = seatId;
+                    } else if (seatsMap[seatId] && seatsMap[seatId].status === 'locked' && seatsMap[seatId].sessionId !== sessionId) { 
+                        seat.className += "bg-gray-500 text-white opacity-80 cursor-not-allowed"; seat.innerText = seatId;
+                    } else {
+                        seat.className += "bg-pink-100 text-pink-700 border-pink-300 border hover:bg-pink-200 cursor-pointer"; seat.innerText = seatId;
+                        
+                        seat.onclick = async function() {
+                            if (seat.classList.contains('cursor-not-allowed')) return;
+
+                            if(seatId !== currentSeat) {
+                                if (lockedEditSeat === seatId) return; 
+                                
+                                const originalHtml = this.innerHTML;
+                                this.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-[8px]"></i>';
+                                const res = await fetchAPI('lockSeat', { seatId: seatId, sessionId: sessionId });
+                                this.innerHTML = originalHtml;
+                                
+                                if(res.status === 'success') {
+                                    if(lockedEditSeat) { fetchAPI('unlockSeat', { seatId: lockedEditSeat, sessionId: sessionId }); }
+                                    lockedEditSeat = seatId;
+                                    
+                                    document.querySelectorAll(`#${containerId} .selected-new`).forEach(el => { el.classList.remove('selected-new', 'bg-green-500', 'text-white', 'border-green-600'); el.classList.add('bg-pink-100', 'text-pink-700', 'border-pink-300'); });
+                                    document.querySelectorAll(`#${containerId} .current-seat-mark`).forEach(el => { el.classList.remove('bg-gray-400'); el.classList.add('bg-blue-500'); });
+                                    
+                                    this.classList.remove('bg-pink-100', 'text-pink-700', 'border-pink-300'); 
+                                    this.classList.add('selected-new', 'bg-green-500', 'text-white', 'border-green-600'); 
+                                    document.querySelectorAll(`#${containerId} .current-seat-mark`).forEach(el => { el.classList.remove('bg-blue-500'); el.classList.add('bg-gray-400'); });
+                                    
+                                    document.getElementById(inputId).value = seatId;
+                                } else {
+                                    Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: res.message, showConfirmButton: false, timer: 3000 });
+                                    const resMap = await fetchAPI('getSeats');
+                                    if(resMap.status === 'success') renderMiniMap(resMap.data, currentSeat, containerId, inputId);
+                                }
+                            } else {
+                                if(lockedEditSeat) {
+                                    fetchAPI('unlockSeat', { seatId: lockedEditSeat, sessionId: sessionId });
+                                    lockedEditSeat = null;
+                                }
+                                document.querySelectorAll(`#${containerId} .selected-new`).forEach(el => { el.classList.remove('selected-new', 'bg-green-500', 'text-white', 'border-green-600'); el.classList.add('bg-pink-100', 'text-pink-700', 'border-pink-300'); });
+                                document.querySelectorAll(`#${containerId} .current-seat-mark`).forEach(el => { el.classList.remove('bg-gray-400'); el.classList.add('bg-blue-500'); });
+                                document.getElementById(inputId).value = seatId;
+                            }
+                        };
+                    }
+                    grid.appendChild(seat);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
